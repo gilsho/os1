@@ -29,6 +29,7 @@ static bool too_many_loops (unsigned loops);
 static void busy_wait (int64_t loops);
 static void real_time_sleep (int64_t num, int32_t denom);
 static void real_time_delay (int64_t num, int32_t denom);
+static bool tick_cmp(const struct list_elem *a,const struct list_elem *b,void *aux UNUSED);
 
 static struct list sleep_list;
  
@@ -88,7 +89,7 @@ timer_elapsed (int64_t then)
 }
 
 bool 
-tick_cmp(const struct list_elem *a,const struct list_elem *b,void *aux) 
+tick_cmp(const struct list_elem *a,const struct list_elem *b,void *aux UNUSED) 
 {
   struct thread *ta = list_entry(a,struct thread, elem);
   struct thread *tb = list_entry(b,struct thread, elem);
@@ -102,16 +103,17 @@ void
 timer_sleep (int64_t ticks) 
 {
 
-  int64_t start = timer_ticks ();
-
   ASSERT (intr_get_level () == INTR_ON);
-  
-  struct thread *t = thread_current();
-  t->wakeup_tick = start + ticks;
-  list_insert_ordered(&sleep_list,&(t->elem),&tick_cmp,NULL);
-  
   intr_set_level(INTR_OFF);
+  int64_t start = timer_ticks ();
+  struct thread *t = thread_current();
+  
+  ASSERT (t->status == THREAD_RUNNING);
+  t->wakeup_tick = start + ticks;
+  /*list_remove(&t->elem);*/
+  list_insert_ordered(&sleep_list,&(t->elem),&tick_cmp,NULL);
   thread_block();  
+    
   intr_set_level (INTR_ON);
 
   /*while (timer_elapsed (start) < ticks) 
@@ -187,12 +189,23 @@ timer_print_stats (void)
 {
   printf ("Timer: %"PRId64" ticks\n", timer_ticks ());
 }
-
 /* Timer interrupt handler. */
 static void
 timer_interrupt (struct intr_frame *args UNUSED)
 {
   ticks++;
+
+  while (!list_empty(&sleep_list)) {
+    struct list_elem * e = list_front (&sleep_list);
+    struct thread *t = list_entry(e,struct thread, elem);
+    
+    /* Check if time to wake up sleeping thread */
+    if (t->wakeup_tick > ticks) break;
+    
+    list_pop_front(&sleep_list);    
+    thread_unblock(t);
+  }
+
   thread_tick ();
 }
 

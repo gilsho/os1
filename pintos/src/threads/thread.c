@@ -425,7 +425,7 @@ kernel_thread (thread_func *function, void *aux)
   function (aux);       /* Execute the thread function. */
   thread_exit ();       /* If function() returns, kill the thread. */
 }
-
+
 /* Returns the running thread. */
 struct thread *
 running_thread (void) 
@@ -466,7 +466,7 @@ init_thread (struct thread *t, const char *name, int priority)
 
   /* thread starts awake */
   t->wakeup_tick = -1; 
-  
+
   t->magic = THREAD_MAGIC;
 
   old_level = intr_disable ();

@@ -97,7 +97,8 @@ struct thread
     /* Owned by userprog/process.c. */
     uint32_t *pagedir;                  /* Page directory. */
 #endif
-
+    /* If thread is sleeping, specifies time it should wake up */
+    int64_t wakeup_tick;
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
