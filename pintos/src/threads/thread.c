@@ -221,6 +221,15 @@ thread_block (void)
   schedule ();
 }
 
+bool 
+priority_cmp(const struct list_elem *a,const struct list_elem *b,void *aux UNUSED) 
+{
+  struct thread *ta = list_entry(a,struct thread, elem);
+  struct thread *tb = list_entry(b,struct thread, elem);
+
+  return ta->priority > tb->priority;
+}
+
 /* Transitions a blocked thread T to the ready-to-run state.
    This is an error if T is not blocked.  (Use thread_yield() to
    make the running thread ready.)
@@ -238,7 +247,10 @@ thread_unblock (struct thread *t)
 
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
-  list_push_back (&ready_list, &t->elem);
+  /* Insert ordered based on priority */
+  list_insert_ordered(&ready_list,&(t->elem),&priority_cmp,NULL);
+
+  /* list_push_back (&ready_list, &t->elem);  DELETE */
   t->status = THREAD_READY;
   intr_set_level (old_level);
 }
@@ -308,8 +320,9 @@ thread_yield (void)
   ASSERT (!intr_context ());
 
   old_level = intr_disable ();
-  if (cur != idle_thread) 
-    list_push_back (&ready_list, &cur->elem);
+  if (cur != idle_thread)
+    list_insert_ordered(&ready_list,&(cur->elem),&priority_cmp,NULL); 
+    /*list_push_back (&ready_list, &cur->elem);*/
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -337,6 +350,7 @@ void
 thread_set_priority (int new_priority) 
 {
   thread_current ()->priority = new_priority;
+  thread_yield();
 }
 
 /* Returns the current thread's priority. */
