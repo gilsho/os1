@@ -223,7 +223,7 @@ thread_block (void)
 }
 
 bool 
-priority_cmp(const struct list_elem *a,const struct list_elem *b,void *aux UNUSED) 
+thread_priority_cmp(const struct list_elem *a,const struct list_elem *b,void *aux UNUSED) 
 {
   struct thread *ta = list_entry(a,struct thread, elem);
   struct thread *tb = list_entry(b,struct thread, elem);
@@ -249,7 +249,7 @@ thread_unblock (struct thread *t)
   old_level = intr_disable ();
   ASSERT (t->status == THREAD_BLOCKED);
   /* Insert ordered based on priority */
-  list_insert_ordered(&ready_list,&(t->elem),&priority_cmp,NULL);
+  list_insert_ordered(&ready_list,&(t->elem),&thread_priority_cmp,NULL);
 
   /* list_push_back (&ready_list, &t->elem);  DELETE */
   t->status = THREAD_READY;
@@ -322,7 +322,7 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread)
-    list_insert_ordered(&ready_list,&(cur->elem),&priority_cmp,NULL); 
+    list_insert_ordered(&ready_list,&(cur->elem),&thread_priority_cmp,NULL); 
     /*list_push_back (&ready_list, &cur->elem);*/
   cur->status = THREAD_READY;
   schedule ();
@@ -478,6 +478,9 @@ init_thread (struct thread *t, const char *name, int priority)
   strlcpy (t->name, name, sizeof t->name);
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
+  t->original_priority = priority;
+  t->blocking_lock = NULL;
+  list_init (&t->locks_held);
 
   /* thread starts awake */
   t->wakeup_tick = -1; 
