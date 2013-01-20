@@ -33,7 +33,6 @@
 #include "threads/thread.h"
 
 
-void lock_post_acquire(struct lock * UNUSED, struct thread * UNUSED);
 void lock_priority_propagate (struct lock * UNUSED, struct thread * UNUSED);
 bool lock_priority_cmp(const struct list_elem *,const struct list_elem *,void * UNUSED);
 
@@ -186,7 +185,7 @@ lock_init (struct lock *lock)
   lock->priority = -1;
   lock->elem.prev = NULL;
   lock->elem.next = NULL;
-  //sema_init (&lock->semaphore, 1);
+  list_init (&lock->waiters);
 }
 
 
@@ -196,7 +195,7 @@ lock_priority_cmp(const struct list_elem *a,const struct list_elem *b,void *aux 
   struct lock *la = list_entry(a,struct lock, elem);
   struct lock *lb = list_entry(b,struct lock, elem);
 
-  return la->priority < lb->priority;
+  return la->priority > lb->priority;
 }
 
 /* Propagate priority from blocking lock to holding thread recursively */
@@ -204,36 +203,28 @@ void
 lock_priority_propagate (struct lock *lock, struct thread *t)
 {
   while (true) {
+    
+    if (lock == NULL) break;
+
     if (t->priority <= lock->priority) break;    
     list_remove(&t->elem);
-    list_insert_ordered(&lock->waiters,&t->elem,&thread_priority_cmp,NULL);
+    /* Possible we need to use list_inserted_order */
+    list_push_front(&lock->waiters,&t->elem);
     lock->priority = t->priority;
     t = lock->holder;
       
-    /* Loop and a half: we always need to update lock's priority
-       but only if lock is not held do we update the priority of
-       the holding thread */
-    if (t == NULL) break;
+    ASSERT (t != NULL);
 
-    if (lock->priority <= t->priority)  break;
-    t->priority = lock->priority;
     /* maintain invariant that lock with the highest priority is 
       placed at front of list */
     list_remove(&lock->elem);
-    list_insert_ordered(&t->locks_held,&lock->elem,&lock_priority_cmp,NULL);
+    list_push_front(&t->locks_held,&lock->elem);
+
+    if (lock->priority <= t->priority)  break;
+    t->priority = lock->priority;
 
     lock = t->blocking_lock;
   }
-}
-
-void
-lock_post_acquire(struct lock *lock, struct thread *t)
-{
-  lock->priority = t->priority;
-  t->blocking_lock = NULL;
-  /* maintain invariant that lock with the highest priority is 
-      placed at front of list */
-  list_insert_ordered(&t->locks_held,&(lock->elem),&lock_priority_cmp,NULL);
 }
 
 /* Acquires LOCK, sleeping until it becomes available if
@@ -255,24 +246,26 @@ lock_acquire (struct lock *lock)
 
   struct thread *t = thread_current ();
 
-  /* Before attempting to acquire lock, assume
-     attempt will fail and prepare accordingly */
-  t->blocking_lock = lock;
-  list_insert_ordered(&lock->waiters, &t->elem, &thread_priority_cmp,NULL); 
-  lock_priority_propagate(lock,t);
-
   /* Attempt to acquire lock */
   old_level = intr_disable();
 
   while (lock->holder != NULL) {
+    t->blocking_lock = lock;
     lock_priority_propagate(lock,t);
     thread_block ();
   }
   lock->holder = t;
-  intr_set_level (old_level);
+
+  /* No need to propogate priority from lock to thread
+     because running thread by definition has highest priority */
 
   /* Lock is acquired by t and thread t is now running */
-  lock_post_acquire(lock,t);
+  t->blocking_lock = NULL;
+  /* maintain invariant that lock with the highest priority is 
+      placed at front of list */
+  list_insert_ordered(&t->locks_held,&(lock->elem),&lock_priority_cmp,NULL);
+
+  intr_set_level (old_level);
 
 }
 
@@ -285,7 +278,7 @@ lock_acquire (struct lock *lock)
 bool
 lock_try_acquire (struct lock *lock)
 {
-  bool success;
+  bool success = false;
 
   ASSERT (lock != NULL);
   ASSERT (!lock_held_by_current_thread (lock));
@@ -299,14 +292,14 @@ lock_try_acquire (struct lock *lock)
   if (lock->holder == NULL) {
     success = true;
     lock->holder = t;
-  } else
-    success = false;
+    t->blocking_lock = NULL;
+    /* maintain invariant that lock with the highest priority is 
+      placed at front of list */
+    list_insert_ordered(&t->locks_held,&(lock->elem),&lock_priority_cmp,NULL);
+  }
 
   intr_set_level (old_level);
 
-  if (success) {
-    lock_post_acquire(lock,t);
-  }
   return success;
 }
 
@@ -337,11 +330,31 @@ lock_release (struct lock *lock)
      in case his current priority was donated by thread waiting on this lock */
   struct thread *t = thread_current();
   list_remove(&lock->elem);
-  int highest_donated_priority = list_entry(list_front(&t->locks_held), struct lock, elem)->priority;
+
+  int highest_donated_priority = -1;
+
+  if (!list_empty(&t->locks_held)) {
+    highest_donated_priority = 
+      list_entry(list_front(&t->locks_held),struct lock, elem)->priority;
+  }
+
+  /* Maintain consistency between thread->priority and max of its original
+     priority and the highest donated priority */
   if (t->original_priority > highest_donated_priority)
     t->priority = t->original_priority; 
   else 
     t->priority = highest_donated_priority;
+
+  /* Maintain consistency between lock->priority and the priority of the thread
+     at the front of the waiting list */
+  if (!list_empty(&lock->waiters)) {
+    struct thread *top_waiter = list_front(&lock->waiters);
+    lock->priority = top_waiter->priority;
+  } else {
+    lock->priority = -1;
+  }
+
+
 
   intr_set_level (old_level);
 
