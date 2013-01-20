@@ -35,6 +35,8 @@
 
 void lock_priority_propagate (struct lock * UNUSED, struct thread * UNUSED);
 bool lock_priority_cmp(const struct list_elem *,const struct list_elem *,void * UNUSED);
+bool cond_priority_cmp(const struct list_elem *,const struct list_elem *,void * UNUSED);
+
 
 /* Initializes semaphore SEMA to VALUE.  A semaphore is a
    nonnegative integer along with two atomic operators for
@@ -386,6 +388,7 @@ struct semaphore_elem
   {
     struct list_elem elem;              /* List element. */
     struct semaphore semaphore;         /* This semaphore. */
+    struct thread *waiting_thread;      /* Thread waiting for condition */
   };
 
 /* Initializes condition variable COND.  A condition variable
@@ -398,6 +401,17 @@ cond_init (struct condition *cond)
 
   list_init (&cond->waiters);
 }
+
+bool
+cond_priority_cmp(const struct list_elem *a,const struct list_elem *b,void *aux UNUSED) 
+{
+  struct semaphore_elem *sa = list_entry(a,struct semaphore_elem, elem);
+  struct semaphore_elem *sb = list_entry(b,struct semaphore_elem, elem);
+
+  return sa->waiting_thread->priority > 
+                  sb->waiting_thread->priority;
+}
+
 
 /* Atomically releases LOCK and waits for COND to be signaled by
    some other piece of code.  After COND is signaled, LOCK is
@@ -430,7 +444,10 @@ cond_wait (struct condition *cond, struct lock *lock)
   ASSERT (lock_held_by_current_thread (lock));
   
   sema_init (&waiter.semaphore, 0);
-  list_push_back (&cond->waiters, &waiter.elem);
+
+  waiter.waiting_thread = thread_current();
+
+  list_insert_ordered (&cond->waiters, &waiter.elem,&cond_priority_cmp,NULL);
   lock_release (lock);
   sema_down (&waiter.semaphore);
   lock_acquire (lock);
