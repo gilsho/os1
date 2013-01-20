@@ -72,7 +72,8 @@ sema_down (struct semaphore *sema)
   old_level = intr_disable ();
   while (sema->value == 0) 
     {
-      list_push_back (&sema->waiters, &thread_current ()->elem);
+      list_insert_ordered(&sema->waiters,&thread_current()->elem,&thread_priority_cmp,NULL);
+      /* list_push_back (&sema->waiters, &thread_current ()->elem); DEBUG */
       thread_block ();
     }
   sema->value--;
@@ -122,6 +123,8 @@ sema_up (struct semaphore *sema)
                                 struct thread, elem));
   sema->value++;
   intr_set_level (old_level);
+
+  thread_yield();
 }
 
 static void sema_test_helper (void *sema_);
@@ -222,6 +225,7 @@ lock_priority_propagate (struct lock *lock, struct thread *t)
 
     if (lock->priority <= t->priority)  break;
     t->priority = lock->priority;
+    t->has_donation = true;
 
     lock = t->blocking_lock;
   }
@@ -336,14 +340,17 @@ lock_release (struct lock *lock)
   if (!list_empty(&t->locks_held)) {
     highest_donated_priority = 
       list_entry(list_front(&t->locks_held),struct lock, elem)->priority;
-  }
+  } 
 
   /* Maintain consistency between thread->priority and max of its original
      priority and the highest donated priority */
-  if (t->original_priority > highest_donated_priority)
-    t->priority = t->original_priority; 
-  else 
+  if (t->original_priority > highest_donated_priority) {
+    t->priority = t->original_priority;
+    t->has_donation = false; 
+  } else {
     t->priority = highest_donated_priority;
+    ASSERT(t->has_donation == true);
+  }
 
   /* Maintain consistency between lock->priority and the priority of the thread
      at the front of the waiting list */

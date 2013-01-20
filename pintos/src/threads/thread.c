@@ -351,12 +351,21 @@ void
 thread_set_priority (int new_priority) 
 {
   struct thread *t = thread_current();
-  t->original_priority = new_priority;
-  if (new_priority > t->priority) {
-    t->priority = new_priority;
 
-    /* Might need to propagate change */
+  /* int old_priority = t->priority; /* DEBUG */
+
+  t->original_priority = new_priority;
+
+  if (t->has_donation) {
+    if (new_priority > t->priority) {
+      t->priority = new_priority;
+    }
+  } else {
+    t->priority = new_priority;
   }
+
+  /* printf("Thread %s, old priority: %d, new priority: %d\n",
+      t->name,old_priority,t->priority);*/
 
   thread_yield();
 }
@@ -486,6 +495,7 @@ init_thread (struct thread *t, const char *name, int priority)
   t->stack = (uint8_t *) t + PGSIZE;
   t->priority = priority;
   t->original_priority = priority;
+  t->has_donation = false;
   t->blocking_lock = NULL;
   list_init (&t->locks_held);
 
