@@ -256,6 +256,19 @@ thread_unblock (struct thread *t)
   intr_set_level (old_level);
 }
 
+
+void thread_set_blocking_object(struct thread *t,void  *bobj,blocking_object_type btype) 
+{
+  t->blocking_object = bobj;
+  t->blocking_type = btype;
+}
+
+void *thread_get_blocking_object(struct thread *t, blocking_object_type *btype)
+{
+  (*btype) = t->blocking_type;
+  return t->blocking_object;
+}
+
 /* Returns the name of the running thread. */
 const char *
 thread_name (void) 
@@ -351,8 +364,6 @@ void
 thread_set_priority (int new_priority) 
 {
   struct thread *t = thread_current();
-
-  /* int old_priority = t->priority; /* DEBUG */
 
   t->original_priority = new_priority;
 
@@ -496,7 +507,8 @@ init_thread (struct thread *t, const char *name, int priority)
   t->priority = priority;
   t->original_priority = priority;
   t->has_donation = false;
-  t->blocking_lock = NULL;
+  t->blocking_object = NULL;
+  t->blocking_type = none;
   list_init (&t->locks_held);
 
   /* thread starts awake */

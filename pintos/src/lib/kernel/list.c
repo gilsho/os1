@@ -245,6 +245,16 @@ list_push_back (struct list *list, struct list_elem *elem)
        ...do something with e...
      }
 */
+
+void 
+list_move_front(struct list *list,struct list_elem *elem)
+{
+  list_remove(elem);
+  list_push_front(list,elem); 
+}
+
+
+
 struct list_elem *
 list_remove (struct list_elem *elem)
 {

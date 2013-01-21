@@ -14,6 +14,14 @@ enum thread_status
     THREAD_DYING        /* About to be destroyed. */
   };
 
+
+  typedef enum {
+    none,
+    lock_type,
+    sema_type,
+    cond_type
+  } blocking_object_type;
+
 /* Thread identifier type.
    You can redefine this to whatever type you like. */
 typedef int tid_t;
@@ -106,13 +114,16 @@ struct thread
     struct list locks_held;
 
     /* the lock currently blocking the thread */
-    struct lock *blocking_lock;
+    //struct lock *blocking_lock;
+    void *blocking_object;
+    blocking_object_type blocking_type;
+
 
     /* Owned by thread.c. */
     unsigned magic;                     /* Detects stack overflow. */
   };
 
-/* If false (default), use round-robin scheduler.
+/* If false (default), use priority scheduler.
    If true, use multi-level feedback queue scheduler.
    Controlled by kernel command-line option "-o mlfqs". */
 extern bool thread_mlfqs;
@@ -128,6 +139,9 @@ tid_t thread_create (const char *name, int priority, thread_func *, void *);
 
 void thread_block (void);
 void thread_unblock (struct thread *);
+
+void thread_set_blocking_object(struct thread *,void  *,blocking_object_type);
+void *thread_get_blocking_object(struct thread *, blocking_object_type *);
 
 struct thread *thread_current (void);
 tid_t thread_tid (void);
