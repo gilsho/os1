@@ -272,7 +272,12 @@ lock_acquire (struct lock *lock)
 
   while (lock->holder != NULL) {
     thread_set_blocking_object(t,lock,lock_type);
-    lock_priority_propagate(lock,t);
+    
+    if (!thread_mlfqs)
+    {
+      lock_priority_propagate(lock,t);
+    }
+    
     thread_block ();
   }
   lock->holder = t;
@@ -353,33 +358,11 @@ lock_release (struct lock *lock)
   struct thread *t = thread_current();
   list_remove(&lock->elem);
 
-  int highest_donated_priority = -1;
-
-  if (!list_empty(&t->locks_held)) {
-    highest_donated_priority = 
-      list_entry(list_front(&t->locks_held),struct lock, elem)->priority;
-  } 
-
-  /* Maintain consistency between thread->priority and max of its original
-     priority and the highest donated priority */
-  if (t->original_priority > highest_donated_priority) {
-    t->priority = t->original_priority;
-    t->has_donation = false; 
-  } else {
-    t->priority = highest_donated_priority;
-    ASSERT(t->has_donation == true);
+  if (!thread_mlfqs)
+  {
+    thread_donation_revert(t);
+    lock_priority_update(lock);
   }
-
-  /* Maintain consistency between lock->priority and the priority of the thread
-     at the front of the waiting list */
-  if (!list_empty(&lock->waiters)) {
-    struct thread *top_waiter = (struct thread *)list_front(&lock->waiters);
-    lock->priority = top_waiter->priority;
-  } else {
-    lock->priority = -1;
-  }
-
-
 
   intr_set_level (old_level);
 
@@ -397,6 +380,18 @@ lock_held_by_current_thread (const struct lock *lock)
   ASSERT (lock != NULL);
 
   return lock->holder == thread_current ();
+}
+
+void lock_priority_update(struct lock *lock)
+{
+  /* Maintain consistency between lock->priority and the priority of the thread
+     at the front of the waiting list */
+  if (!list_empty(&lock->waiters)) {
+    struct thread *top_waiter = (struct thread *)list_front(&lock->waiters);
+    lock->priority = top_waiter->priority;
+  } else {
+    lock->priority = -1;
+  }
 }
 
 /* One semaphore in a list. */
