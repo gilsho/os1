@@ -125,6 +125,7 @@ test_mlfqs_load_60 (void)
       char name[16];
       snprintf(name, sizeof name, "load %d", i);
       thread_create (name, PRI_DEFAULT, load_thread, NULL);
+      thread_get_load_avg();
     }
   msg ("Starting threads took %d seconds.",
        timer_elapsed (start_time) / TIMER_FREQ);
@@ -149,6 +150,7 @@ load_thread (void *aux UNUSED)
 
   thread_set_nice (20);
   timer_sleep (sleep_time - timer_elapsed (start_time));
+
   while (timer_elapsed (start_time) < spin_time)
     continue;
   timer_sleep (exit_time - timer_elapsed (start_time));

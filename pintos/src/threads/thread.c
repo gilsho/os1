@@ -274,7 +274,16 @@ thread_block (void)
   ASSERT (!intr_context ());
   ASSERT (intr_get_level () == INTR_OFF);
 
-  thread_current ()->status = THREAD_BLOCKED;
+  struct thread *t = thread_current();
+
+  /* DEBUG */
+  /*printf("in thread_block(), thread: %s ready_threads: %d, load_avg: %d, idle: %d\n",
+          t->name, ready_threads,fp_to_int_round(fp_mult_int(load_avg, 100)),
+          t == idle_thread);*/
+
+  t->status = THREAD_BLOCKED;
+  if (t != idle_thread)
+    ready_threads--;
   schedule ();
 }
 
@@ -303,11 +312,18 @@ thread_unblock (struct thread *t)
   ASSERT (is_thread (t));
 
   old_level = intr_disable ();
+  
+  /* DEBUG */
+  /*printf("in thread_unblock(), thread: %s ready_threads: %d, load_avg: %d, idle: %n",
+          t->name, ready_threads,fp_to_int_round(fp_mult_int(load_avg, 100)),
+          t == idle_thread);*/
+
   ASSERT (t->status == THREAD_BLOCKED);
   /* Insert ordered based on priority */
   list_insert_ordered(&ready_list,&(t->elem),&thread_priority_cmp,NULL);
-  ready_threads++;
-
+  if (t != idle_thread)
+    ready_threads++;
+  
   /* list_push_back (&ready_list, &t->elem);  DELETE */
   t->status = THREAD_READY;
   intr_set_level (old_level);
@@ -376,6 +392,7 @@ thread_exit (void)
   intr_disable ();
   list_remove (&thread_current()->allelem);
   thread_current ()->status = THREAD_DYING;
+  ready_threads--;
   schedule ();
   NOT_REACHED ();
 }
@@ -392,10 +409,7 @@ thread_yield (void)
 
   old_level = intr_disable ();
   if (cur != idle_thread)
-  {
     list_insert_ordered(&ready_list,&(cur->elem),&thread_priority_cmp,NULL); 
-    ready_threads++;
-  }
   cur->status = THREAD_READY;
   schedule ();
   intr_set_level (old_level);
@@ -660,10 +674,7 @@ next_thread_to_run (void)
   if (list_empty (&ready_list))
     return idle_thread;
   else
-  {
-    ready_threads--;
     return list_entry (list_pop_front (&ready_list), struct thread, elem);
-  }
 }
 
 /* Completes a thread switch by activating the new thread's page
