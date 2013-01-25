@@ -100,6 +100,8 @@ void
 thread_init (void) 
 {
   ASSERT (intr_get_level () == INTR_OFF);
+  
+  load_avg = 0;
 
   lock_init (&tid_lock);
   list_init (&ready_list);
@@ -112,6 +114,9 @@ thread_init (void)
   initial_thread->tid = allocate_tid ();
   initial_thread->recent_cpu = 0;
   ready_threads = 0;
+  
+  if (thread_mlfqs)
+    thread_calc_priority(initial_thread, NULL);
 
 }
 
@@ -152,13 +157,14 @@ thread_tick (void)
   else
     kernel_ticks++;
     
-  /* DEBUG: disable for MLFQS? */
-  /* Enforce preemption. */
-  if (++thread_ticks >= TIME_SLICE)
-    intr_yield_on_return ();
-    
   if (!thread_mlfqs)
+  {
+    /* DEBUG: disable for MLFQS? */
+    /* Enforce preemption. */
+    if (++thread_ticks >= TIME_SLICE)
+    intr_yield_on_return ();
     return;
+  }
 
   if (timer_ticks() % PRIORITY_UPDATE_TICK_PERIOD == 0)
   {
@@ -169,10 +175,12 @@ thread_tick (void)
     which may have changed since insertion. The original ordering of 
     threads with the same priority is maintained in the new list. */
     list_sort (&ready_list, &thread_priority_cmp, NULL);
+    
+    intr_yield_on_return ();
   }
-  
+
   if (timer_ticks() % TIMER_FREQ == 0)
-  {
+  { 
     fixed_point_t tmp1 = fp_int_to_fp(59);
     fixed_point_t tmp2 = fp_div_int(tmp1, 60);
     fixed_point_t tmp3 = fp_mult(load_avg, tmp2);
@@ -217,11 +225,6 @@ thread_create (const char *name, int priority,
                thread_func *function, void *aux) 
 {
 
-  if (thread_mlfqs)
-  {
-    priority = thread_get_priority();
-  }
-
   struct thread *t;
   struct kernel_thread_frame *kf;
   struct switch_entry_frame *ef;
@@ -238,7 +241,13 @@ thread_create (const char *name, int priority,
   /* Initialize thread. */
   init_thread (t, name, priority);
   tid = t->tid = allocate_tid ();
-  t->recent_cpu = thread_current()->recent_cpu;
+  
+  if (thread_mlfqs)
+  {
+    t->recent_cpu = thread_current()->recent_cpu;
+    t->nice = thread_get_nice();
+    thread_calc_priority(t, NULL);
+  } 
 
   /* Stack frame for kernel_thread(). */
   kf = alloc_frame (t, sizeof *kf);
@@ -492,9 +501,13 @@ void thread_donation_revert(struct thread * t)
 void thread_calc_priority(struct thread *t, void *aux UNUSED)
 {   
   fixed_point_t tmp1 = fp_div_int(t->recent_cpu, 4);
-  fixed_point_t tmp2 = fp_sub_int(tmp1, (t->nice * 2));
+  fixed_point_t tmp2 = fp_add_int(tmp1, (t->nice * 2));
   int32_t tmp3       = fp_to_int_round(tmp2);
   t->priority        = PRI_MAX - tmp3;
+  if (t->priority > PRI_MAX)
+    t->priority = PRI_MAX;
+  if (t->priority < PRI_MIN)
+    t->priority = PRI_MIN;
 }
 
 /* Recalculate the current thread's recent_cpu using the
@@ -521,6 +534,15 @@ thread_set_nice (int nice)
   struct thread *t = thread_current();
   t->nice = nice;
   thread_calc_priority(t, NULL);  
+  
+  /*
+  printf("load_avg:              %d\n", fp_to_int_round(load_avg));
+  printf("new thread name:       %s\n", t->name);
+  printf("new thread recent_cpu: %d\n", fp_to_int_round(t->recent_cpu));
+  printf("new thread nice:       %d\n", t->nice);
+  printf("new thread priority:   %d\n", t->priority);
+  */
+  
   thread_yield();
 }
 
@@ -635,7 +657,6 @@ init_thread (struct thread *t, const char *name, int priority)
   t->priority = priority;
   t->original_priority = priority;
   t->has_donation = false;
-  t->nice = 0;
   t->blocking_object = NULL;
   t->blocking_type = none;
   list_init (&t->locks_held);
