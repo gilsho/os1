@@ -305,6 +305,21 @@ thread_priority_cmp(const struct list_elem *a,const struct list_elem *b,void *au
   return ta->priority > tb->priority;
 }
 
+void
+print_priority(struct thread *t, void *aux UNUSED){
+  printf("thread: %s \t priority: %d \n", t->name, t->priority);
+}
+
+void
+print_priorities(void){
+  static int count = 0;
+  struct thread *t = thread_current();
+  if(!(t->name[0] == 'm' && t->name[1] == 'a'))return;
+  printf("thread priorities count: %d\n", count++);
+   thread_foreach (&print_priority, NULL); 
+   printf("\n----------------------------------------------------------\n");
+}
+
 /* Transitions a blocked thread T to the ready-to-run state.
    This is an error if T is not blocked.  (Use thread_yield() to
    make the running thread ready.)
