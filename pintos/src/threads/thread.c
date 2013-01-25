@@ -452,6 +452,7 @@ thread_set_priority (int new_priority)
 
   t->original_priority = new_priority;
 
+  enum intr_level old_level = intr_disable ();
   if (t->has_donation) {
     if (new_priority > t->priority) {
       t->priority = new_priority;
@@ -459,7 +460,7 @@ thread_set_priority (int new_priority)
   } else {
     t->priority = new_priority;
   }
-
+  intr_set_level (old_level);
   /* printf("Thread %s, old priority: %d, new priority: %d\n",
       t->name,old_priority,t->priority);*/
 
