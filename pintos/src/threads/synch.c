@@ -272,12 +272,10 @@ lock_acquire (struct lock *lock)
 
   while (lock->holder != NULL) {
     thread_set_blocking_object(t,lock,lock_type);
-    
-    if (!thread_mlfqs)
-    {
+
+    list_insert_ordered(&lock->waiters,&t->elem, &thread_priority_cmp, NULL);    
+    if (!thread_mlfqs) {
       lock_priority_propagate(lock,t);
-    }else{
-      list_insert_ordered(&lock->waiters,&t->elem, &thread_priority_cmp, NULL);
     }
     
     thread_block ();
@@ -346,8 +344,6 @@ lock_release (struct lock *lock)
   enum intr_level old_level;
 
   old_level = intr_disable ();
-
-  /*print_priorities();*/
 
   lock->holder = NULL;
   if (!list_empty(&lock->waiters)) {
